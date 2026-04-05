@@ -20,3 +20,20 @@ This project proposes an automated pipeline that:
 - Generates a formal report using an AI language model
 - Notifies the appropriate government authority instantly
 
+## Getting started
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Run the Streamlit app:
+   ```bash
+   streamlit run app/streamlit_app.py
+   ```
+3. Upload a video or image, enter a location, and generate a municipal report.
+
+### Optional
+
+- Set `OPENAI_API_KEY` or `GROQ_API_KEY` to use a real LLM for report generation.
+- Provide latitude and longitude to place the alert on the map.
+
