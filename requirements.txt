@@ -17,3 +17,5 @@ openai>=1.30.0              # OpenAI API client (set OPENAI_API_KEY)
 # ── Utilities ────────────────────────────────────────────────────────────────
 requests>=2.31.0            # for download_samples.py
 python-dotenv>=1.0.0        # optional: load .env file
+folium>=0.15.1
+streamlit-folium>=0.11.0
