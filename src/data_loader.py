@@ -8,6 +8,7 @@ for the SmartRoad defect detection pipeline.
 from __future__ import annotations
 
 import io
+import tempfile
 from pathlib import Path
 from typing import Generator
 
@@ -158,6 +159,32 @@ def video_frame_generator(
             frame_idx += 1
     finally:
         cap.release()
+
+
+def _save_bytes_to_temp_file(data: bytes, suffix: str = ".mp4") -> Path:
+    """Write bytes into a temporary file and return its path."""
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp_file.write(data)
+    tmp_file.flush()
+    tmp_file.close()
+    return Path(tmp_file.name)
+
+
+def load_frame_from_video_bytes(
+    video_bytes: bytes,
+    frame_skip: int = 15,
+) -> np.ndarray:
+    """Extract a representative video frame from uploaded bytes."""
+    temp_path = _save_bytes_to_temp_file(video_bytes, suffix=".mp4")
+    try:
+        for _, frame in video_frame_generator(temp_path, frame_skip=frame_skip):
+            return frame
+        raise ValueError("Unable to extract a frame from the uploaded video.")
+    finally:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
 
 
 def list_sample_images() -> list[Path]:
