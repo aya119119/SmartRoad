@@ -1,16 +1,13 @@
 """
 app/streamlit_app.py
----------------------
-SmartRoad — AI-Powered Street Defect Detection & Reporting System
-Streamlit frontend: upload → detect → severity → report → send to municipality.
-
-Run:
-    streamlit run app/streamlit_app.py
+--------------------
+SmartRoad mobile-style interface for video/image upload, AI defect detection,
+severity scoring, official report generation, map alerting, and authority
+notification.
 """
 
 from __future__ import annotations
 
-import io
 import os
 import sys
 import time
@@ -21,6 +18,14 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
+# Map display
+try:
+    import folium
+    from streamlit_folium import st_folium
+    FOLIUM_AVAILABLE = True
+except ImportError:
+    FOLIUM_AVAILABLE = False
+
 # Make src/ importable when running from repo root
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -29,12 +34,19 @@ from src.data_loader import (
     bgr_to_pil,
     get_image_metadata,
     list_sample_images,
+    load_frame_from_video_bytes,
     load_image_from_bytes,
     load_image_from_path,
 )
-from src.detection import DetectionResult, RoadDefectDetector, get_detector
+from src.database import DatabaseManager
+from src.detection import DetectionResult, get_detector
 from src.report_generator import OfficialReport, generate_report
-from src.severity import SeverityReport, SeverityLevel, compute_severity
+from src.severity import SeverityLevel, SeverityReport, compute_severity
+
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+DB = DatabaseManager()
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +54,7 @@ from src.severity import SeverityReport, SeverityLevel, compute_severity
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="SmartRoad — Road Defect AI",
+    page_title="SmartRoad — Civic Issue Reporting",
     page_icon="🛣️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -50,13 +62,13 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------------------------
-# Custom CSS — dark industrial theme with safety-yellow accent
+# Custom CSS
 # ---------------------------------------------------------------------------
 
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
@@ -64,67 +76,21 @@ st.markdown(
     h1, h2, h3, .mono {
         font-family: 'IBM Plex Mono', monospace;
     }
-
-    /* Main background */
-    .stApp { background-color: #0f1117; color: #e8eaed; }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] { background-color: #161b27; border-right: 1px solid #2a2f3e; }
-
-    /* Cards */
-    .card {
-        background: #161b27;
-        border: 1px solid #2a2f3e;
-        border-radius: 10px;
-        padding: 1.25rem 1.5rem;
-        margin-bottom: 1rem;
-    }
-    .card-accent {
-        border-left: 4px solid #f5c518;
-    }
-
-    /* Metric boxes */
-    .metric-box {
-        background: #1e2436;
-        border-radius: 8px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .metric-value { font-size: 2rem; font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
-    .metric-label { font-size: 0.75rem; color: #8b95a8; text-transform: uppercase; letter-spacing: 0.08em; }
-
-    /* Severity badges */
-    .badge-critical { background: #7f1d1d; color: #fca5a5; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
-    .badge-high     { background: #7c2d12; color: #fdba74; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
-    .badge-moderate { background: #713f12; color: #fde68a; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
-    .badge-low      { background: #14532d; color: #86efac; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
-
-    /* Report text */
-    .report-body { font-size: 0.9rem; line-height: 1.7; white-space: pre-wrap; color: #d1d5db; }
-
-    /* Accent yellow */
-    .accent { color: #f5c518; }
-    .accent-bold { color: #f5c518; font-weight: 700; }
-
-    /* Progress bar override */
-    .stProgress > div > div > div > div { background-color: #f5c518; }
-
-    /* Buttons */
-    .stButton > button {
-        border-radius: 6px;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-    }
-    div[data-testid="stHorizontalBlock"] .stButton > button {
-        width: 100%;
-    }
-
-    /* Divider */
-    hr { border-color: #2a2f3e; }
-
-    /* Hide Streamlit branding */
-    #MainMenu { visibility: hidden; }
+    .stApp { background-color: #f8fafc; color: #111827; }
+    [data-testid="stSidebar"] { background-color: #111827; color: #f8fafc; }
+    .card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 18px; padding: 1.2rem; margin-bottom: 1rem; }
+    .card-accent { border-left: 4px solid #ef4444; }
+    .metric-box { background: #111827; color: #f8fafc; border-radius: 12px; padding: 1rem; }
+    .metric-value { font-size: 1.8rem; font-weight: 700; }
+    .metric-label { font-size: 0.8rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; }
+    .report-body { font-size: 0.95rem; line-height: 1.75; color: #111827; white-space: pre-wrap; }
+    .badge-critical { background: #dc2626; color: #fff; padding: 4px 12px; border-radius: 999px; }
+    .badge-high { background: #f97316; color: #fff; padding: 4px 12px; border-radius: 999px; }
+    .badge-moderate { background: #facc15; color: #111827; padding: 4px 12px; border-radius: 999px; }
+    .badge-low { background: #16a34a; color: #fff; padding: 4px 12px; border-radius: 999px; }
+    .stButton > button { border-radius: 12px; font-weight: 600; }
     footer { visibility: hidden; }
+    #MainMenu { visibility: hidden; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -132,7 +98,7 @@ st.markdown(
 
 
 # ---------------------------------------------------------------------------
-# Session state initialisation
+# Session state helpers
 # ---------------------------------------------------------------------------
 
 def _init_state() -> None:
@@ -141,47 +107,102 @@ def _init_state() -> None:
         "severity_report": None,
         "official_report": None,
         "current_image_bgr": None,
-        "location_hint": "Unknown road segment",
-        "email_sent": False,
+        "location_hint": "Main St & 5th Ave, Downtown",
+        "latitude": "",
+        "longitude": "",
+        "uploaded_filename": "",
+        "notification_sent": False,
         "processing": False,
     }
-    for key, val in defaults.items():
+    for key, value in defaults.items():
         if key not in st.session_state:
-            st.session_state[key] = val
+            st.session_state[key] = value
 
 
 _init_state()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Utility helpers
 # ---------------------------------------------------------------------------
 
 def _severity_badge(level: SeverityLevel) -> str:
     css_class = f"badge-{level.value.lower()}"
-    return f'<span class="{css_class}">{level.value.upper()}</span>'
+    return f'<span class="{css_class}">{level.value}</span>'
 
 
-def _bgr_to_bytes(bgr: np.ndarray, quality: int = 90) -> bytes:
-    """Encode a BGR NumPy image to JPEG bytes."""
-    _, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-    return buf.tobytes()
+def _bgr_to_bytes(image: np.ndarray, quality: int = 88) -> bytes:
+    _, buffer = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    return buffer.tobytes()
 
 
-def _run_pipeline(image_bgr: np.ndarray, location: str) -> None:
-    """Run the full detection → severity → report pipeline."""
-    st.session_state["processing"] = True
+def _parse_coordinate(value: str) -> float | None:
+    try:
+        return float(value.strip())
+    except (ValueError, AttributeError):
+        return None
 
-    with st.spinner("Running AI detection…"):
+
+def _simulate_repair_image(image: np.ndarray, detections: list) -> np.ndarray:
+    repaired = image.copy()
+    for det in detections:
+        x1, y1, x2, y2 = det.bbox
+        if x2 <= x1 or y2 <= y1:
+            continue
+        patch = repaired[y1:y2, x1:x2]
+        if patch.size == 0:
+            continue
+        blurred = cv2.GaussianBlur(patch, (31, 31), 0)
+        repaired[y1:y2, x1:x2] = cv2.addWeighted(patch, 0.25, blurred, 0.75, 0)
+    cv2.putText(
+        repaired,
+        "AFTER: Simulated fix",
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        (34, 197, 94),
+        thickness=2,
+        lineType=cv2.LINE_AA,
+    )
+    return repaired
+
+
+def _notify_authorities(report: OfficialReport, sev: SeverityReport, location: str, latitude: float | None, longitude: float | None) -> None:
+    message = (
+        f"[SmartRoad ALERT] {report.report_id} | {sev.level_str} | {location}"
+        f" | lat={latitude if latitude is not None else 'N/A'}"
+        f" | lon={longitude if longitude is not None else 'N/A'}"
+    )
+    print(message)
+    print(report.as_plain_text())
+
+
+def _save_report_to_db(report: OfficialReport, sev: SeverityReport, location: str, latitude: float | None, longitude: float | None) -> None:
+    issue_type = sev.primary_defect_type if sev.primary_defect_type != "none" else "road_damage"
+    DB.insert_report(
+        report_id=report.report_id,
+        location_description=location,
+        latitude=latitude,
+        longitude=longitude,
+        issue_type=issue_type,
+        severity_score=sev.score_int,
+        severity_level=sev.level_str,
+        report_text=report.as_plain_text(),
+    )
+
+
+def _run_pipeline(image_bgr: np.ndarray, location: str, conf_threshold: float) -> None:
+    st.session_state.processing = True
+    with st.spinner("Running AI defect detection..."):
         detector = get_detector()
-        result: DetectionResult = detector.detect(image_bgr)
-        st.session_state["detection_result"] = result
+        result: DetectionResult = detector.detect(image_bgr, conf_threshold=conf_threshold)
+        st.session_state.detection_result = result
 
-    with st.spinner("Scoring severity…"):
+    with st.spinner("Scoring severity..."):
         sev: SeverityReport = compute_severity(result)
-        st.session_state["severity_report"] = sev
+        st.session_state.severity_report = sev
 
-    with st.spinner("Generating official report with LLM…"):
+    with st.spinner("Generating official report..."):
         report: OfficialReport = generate_report(
             severity_level=sev.level_str,
             defect_count=sev.defect_count,
@@ -193,149 +214,144 @@ def _run_pipeline(image_bgr: np.ndarray, location: str) -> None:
             location_hint=location,
             notes=sev.notes,
         )
-        st.session_state["official_report"] = report
+        st.session_state.official_report = report
 
-    st.session_state["processing"] = False
-    st.session_state["email_sent"] = False
+    latitude = _parse_coordinate(st.session_state.latitude)
+    longitude = _parse_coordinate(st.session_state.longitude)
+    _save_report_to_db(report, sev, location, latitude, longitude)
+    _notify_authorities(report, sev, location, latitude, longitude)
+    st.session_state.notification_sent = True
+    st.session_state.processing = False
 
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
-def render_sidebar() -> None:
+def render_sidebar() -> float:
     with st.sidebar:
         st.markdown(
-            '<h2 class="mono accent">🛣️ SmartRoad</h2>'
-            '<p style="color:#8b95a8;font-size:0.8rem;margin-top:-0.5rem;">'
-            "AI Street Defect Detection v1.0</p>",
+            '<div style="padding: 1rem 0 0.5rem 0;">'
+            '<h2 class="mono" style="margin:0;color:#f8fafc;">🛣️ SmartRoad</h2>'
+            '<p style="color:#d1d5db;margin-top:0.25rem;">Civic issue report platform</p>'
+            '</div>',
             unsafe_allow_html=True,
         )
-        st.divider()
-
-        # Location input
-        st.markdown("**📍 Location**")
-        loc = st.text_input(
-            "Road / intersection description",
-            value=st.session_state["location_hint"],
-            placeholder="e.g. Main St & 5th Ave, Downtown",
-            label_visibility="collapsed",
-        )
-        st.session_state["location_hint"] = loc
-
-        st.divider()
-
-        # Model settings
-        st.markdown("**⚙️ Detection Settings**")
+        st.markdown("---")
+        st.markdown("**📌 Detection Settings**")
         conf_thresh = st.slider(
-            "Confidence threshold", 0.10, 0.90, 0.35, 0.05,
-            help="Minimum confidence to show a detection."
+            "Confidence threshold",
+            0.10,
+            0.90,
+            0.35,
+            0.05,
+            help="Minimum AI confidence to keep a detection.",
         )
-
-        st.divider()
-
-        # LLM provider info
-        provider_env = os.getenv("GROQ_API_KEY") or os.getenv("LLM_API_KEY")
-        provider_status = "🟢 Groq (Llama 3.1-70B)" if provider_env else "🟡 Mock (template)"
+        st.markdown("---")
+        provider_env = os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("LLM_API_KEY")
+        provider_status = "🟢 AI backend enabled" if provider_env else "🟡 Mock report generation"
         st.markdown(f"**🤖 LLM Provider**  \n{provider_status}")
         if not provider_env:
-            st.info(
-                "Set `GROQ_API_KEY` or `LLM_API_KEY` env var to enable AI-generated reports.",
-                icon="ℹ️",
-            )
-
-        st.divider()
+            st.info("Set OPENAI_API_KEY or GROQ_API_KEY to enable real LLM reports.", icon="ℹ️")
+        st.markdown("---")
+        open_count = len(DB.get_open_reports())
+        st.markdown(f"**📍 Active Alerts**  \n{open_count} open report(s)")
+        st.markdown("---")
         st.markdown(
-            '<p style="color:#8b95a8;font-size:0.72rem;">'
-            "SmartRoad © 2025 — for demonstration purposes."
-            "</p>",
+            '<p style="font-size:0.75rem;color:#9ca3af;">SmartRoad MVP — from video to official incident report.</p>',
             unsafe_allow_html=True,
         )
-
-    return conf_thresh  # type: ignore[return-value]
-
-
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
-
-def render_header() -> None:
-    st.markdown(
-        """
-        <div style="padding: 1.5rem 0 0.5rem 0;">
-          <h1 class="mono" style="font-size:2rem;margin-bottom:0.2rem;">
-            <span class="accent">SMART</span>ROAD
-          </h1>
-          <p style="color:#8b95a8;font-size:0.9rem;margin-top:0;">
-            AI-Powered Street Defect Detection &amp; Municipal Reporting System
-          </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.divider()
+    return conf_thresh
 
 
 # ---------------------------------------------------------------------------
-# Input section
+# Main inputs
 # ---------------------------------------------------------------------------
 
 def render_input_section(conf_thresh: float) -> None:
-    st.markdown("### 📷 Upload Road Image")
+    st.markdown("### 🚨 Report a Civic Issue")
+    st.markdown("Upload a short video or image of the issue, then add a location.")
 
-    tab_upload, tab_sample = st.tabs(["Upload your image", "Use a sample"])
+    uploaded = st.file_uploader(
+        "Upload photo or video",
+        type=[*IMAGE_EXTENSIONS, *VIDEO_EXTENSIONS],
+        label_visibility="collapsed",
+        help="Supported: JPG, PNG, MP4, MOV, AVI, MKV",
+    )
 
-    image_bgr: np.ndarray | None = None
+    st.markdown("#### Location")
+    location_text = st.text_input(
+        "Location description",
+        value=st.session_state.location_hint,
+        placeholder="Street address, intersection, or landmark",
+    )
+    st.session_state.location_hint = location_text
 
-    with tab_upload:
-        uploaded = st.file_uploader(
-            "Drag & drop a road image (JPG, PNG, WEBP)",
-            type=["jpg", "jpeg", "png", "webp", "bmp"],
-            label_visibility="collapsed",
+    cols = st.columns(2)
+    with cols[0]:
+        st.session_state.latitude = st.text_input(
+            "Latitude",
+            value=st.session_state.latitude,
+            placeholder="e.g. 37.7749",
         )
-        if uploaded:
-            image_bgr = load_image_from_bytes(uploaded.read())
-            st.image(bgr_to_pil(image_bgr), caption="Uploaded image", use_container_width=True)
+    with cols[1]:
+        st.session_state.longitude = st.text_input(
+            "Longitude",
+            value=st.session_state.longitude,
+            placeholder="e.g. -122.4194",
+        )
 
-    with tab_sample:
-        sample_paths = list_sample_images()
-        if not sample_paths:
-            st.warning(
-                "No sample images found in `data/samples/`.  \n"
-                "Run `python scripts/download_samples.py` to download them.",
-                icon="⚠️",
-            )
+    image_bgr = None
+    if uploaded is not None:
+        suffix = Path(uploaded.name).suffix.lower()
+        bytes_data = uploaded.read()
+        if suffix in VIDEO_EXTENSIONS:
+            try:
+                image_bgr = load_frame_from_video_bytes(bytes_data, frame_skip=12)
+                st.success("Video frame extracted for AI analysis.")
+            except Exception as exc:
+                st.error(f"Unable to process video: {exc}")
         else:
-            sample_names = [p.name for p in sample_paths]
-            chosen = st.selectbox("Select a sample image", sample_names)
-            chosen_path = next(p for p in sample_paths if p.name == chosen)
-            image_bgr = load_image_from_path(chosen_path)
-            st.image(bgr_to_pil(image_bgr), caption=chosen, use_container_width=True)
+            try:
+                image_bgr = load_image_from_bytes(bytes_data)
+            except Exception as exc:
+                st.error(f"Unable to load image: {exc}")
 
     if image_bgr is not None:
-        st.session_state["current_image_bgr"] = image_bgr
-        meta = get_image_metadata(image_bgr)
+        st.session_state.current_image_bgr = image_bgr
+        st.session_state.uploaded_filename = uploaded.name
+        st.image(
+            bgr_to_pil(image_bgr),
+            caption=f"Selected frame from {uploaded.name}",
+            use_container_width=True,
+        )
         st.caption(
-            f"📐 {meta['width']} × {meta['height']} px | "
-            f"💾 {meta['size_kb']} KB | "
-            f"🎨 {meta['channels']}-channel"
+            "If the video contains multiple frames, SmartRoad uses a representative frame for detection."
         )
 
-        col_run, col_clear = st.columns([3, 1])
-        with col_run:
-            if st.button("🔍 Analyse Road Defects", type="primary", use_container_width=True):
-                _run_pipeline(image_bgr, st.session_state["location_hint"])
-                st.rerun()
-        with col_clear:
-            if st.button("🗑 Clear", use_container_width=True):
-                for k in ["detection_result", "severity_report", "official_report",
-                          "current_image_bgr", "email_sent"]:
-                    st.session_state[k] = None
-                st.rerun()
+    if st.button("🔍 Analyse and Report", type="primary", use_container_width=True) and st.session_state.current_image_bgr is not None:
+        _run_pipeline(
+            st.session_state.current_image_bgr,
+            st.session_state.location_hint,
+            conf_thresh,
+        )
+        st.experimental_rerun()
+
+    if st.button("🗑 Clear current report", use_container_width=True):
+        for key in [
+            "detection_result",
+            "severity_report",
+            "official_report",
+            "current_image_bgr",
+            "uploaded_filename",
+            "notification_sent",
+        ]:
+            st.session_state[key] = None
+        st.experimental_rerun()
 
 
 # ---------------------------------------------------------------------------
-# Results section
+# Results rendering
 # ---------------------------------------------------------------------------
 
 def render_results() -> None:
@@ -343,166 +359,182 @@ def render_results() -> None:
     sev: SeverityReport | None = st.session_state.get("severity_report")
     report: OfficialReport | None = st.session_state.get("official_report")
 
-    if result is None or sev is None:
+    if result is None or sev is None or report is None:
         return
 
-    st.divider()
-    st.markdown("### 🔬 Detection Results")
+    st.markdown("### 🔬 Detection Summary")
+    before = bgr_to_pil(result.annotated_image)
+    after = bgr_to_pil(_simulate_repair_image(result.annotated_image, result.detections))
 
-    # --- Annotated image + metrics side by side ---
-    col_img, col_stats = st.columns([2, 1], gap="large")
+    col1, col2 = st.columns(2, gap="medium")
+    with col1:
+        st.image(before, caption="Detected issue (AI annotated)", use_container_width=True)
+    with col2:
+        st.image(after, caption="Simulated fix (after)", use_container_width=True)
 
-    with col_img:
-        annotated_pil = bgr_to_pil(result.annotated_image)
-        st.image(annotated_pil, caption="AI-annotated image", use_container_width=True)
+    col_a, col_b = st.columns([2, 1], gap="large")
+    with col_a:
+        if sev.breakdown:
+            st.markdown("#### Detected issue types")
+            breakdown_text = "\n".join(f"- {label.replace('_', ' ').title()}: {count}" for label, count in sev.breakdown.items())
+            st.markdown(breakdown_text)
 
-    with col_stats:
-        # Severity badge
+        with st.expander("📋 AI observations", expanded=True):
+            for note in sev.notes:
+                st.markdown(f"- {note}")
+
+    with col_b:
         st.markdown(
             f'<div class="card card-accent">'
             f'<div class="metric-label">Severity Level</div>'
-            f'<div class="metric-value" style="color:{sev.colour}">{sev.icon} {sev.level_str}</div>'
-            f'<div style="margin-top:0.3rem">{_severity_badge(sev.level)}</div>'
+            f'<div class="metric-value">{sev.icon} {sev.level_str}</div>'
+            f'<div style="margin-top:0.5rem;">{_severity_badge(sev.level)}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="metric-box" style="margin-top:1rem;">'
+            f'<div class="metric-value">{sev.score_int}/100</div>'
+            f'<div class="metric-label">Severity score</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="metric-box" style="margin-top:0.8rem;">'
+            f'<div class="metric-value">{sev.recommended_response_time}</div>'
+            f'<div class="metric-label">Recommended response</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-        # Score progress
-        st.markdown(
-            f'<div class="metric-label" style="margin-bottom:4px;">Severity Score</div>',
-            unsafe_allow_html=True,
-        )
-        st.progress(sev.score / 100)
-        st.caption(f"{sev.score_int}/100")
+    render_report_section(report)
+    render_map_section()
+    render_open_alerts()
 
-        # Quick stats
-        metrics = [
-            ("Defects Found",    str(sev.defect_count),             ""),
-            ("Avg Confidence",   f"{sev.confidence_avg:.0%}",       ""),
-            ("Area Affected",    f"{sev.area_coverage_pct:.1f}%",   ""),
-            ("Inference Time",   f"{result.inference_time_ms:.0f}ms",""),
-        ]
-        for label, value, _ in metrics:
-            st.markdown(
-                f'<div class="metric-box" style="margin-bottom:0.5rem;">'
-                f'<div class="metric-value accent-bold">{value}</div>'
-                f'<div class="metric-label">{label}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
 
-    # --- Defect breakdown ---
-    if sev.breakdown:
-        st.markdown("#### Detected Defects")
-        cols = st.columns(min(len(sev.breakdown), 4))
-        for i, (label, count) in enumerate(sev.breakdown.items()):
-            with cols[i % len(cols)]:
-                st.metric(label.replace("_", " ").title(), count)
+# ---------------------------------------------------------------------------
+# Report display
+# ---------------------------------------------------------------------------
 
-    # --- Observations ---
-    with st.expander("📋 AI Observations", expanded=True):
-        for note in sev.notes:
-            st.markdown(f"- {note}")
-
-    # --- Response time ---
-    st.info(
-        f"⏱️ **Recommended response time:** {sev.recommended_response_time}",
-        icon=sev.icon,
+def render_report_section(report: OfficialReport) -> None:
+    st.markdown("### 📝 Generated Official Report")
+    st.markdown(
+        f'<div class="card">'
+        f'<h3 class="mono" style="margin:0 0 0.4rem 0;">{report.title}</h3>'
+        f'<p style="color:#6b7280; margin:0;">Report ID: <strong>{report.report_id}</strong> • Generated: {report.generated_at}</p>'
+        f'</div>',
+        unsafe_allow_html=True,
     )
-
-    # --- Official report ---
-    if report:
-        render_report_section(report, sev)
-
-
-# ---------------------------------------------------------------------------
-# Report section
-# ---------------------------------------------------------------------------
-
-def render_report_section(report: OfficialReport, sev: SeverityReport) -> None:
-    st.divider()
-    st.markdown("### 📄 Official Municipal Report")
-
-    with st.container():
-        st.markdown(
-            f'<div class="card">'
-            f'<h3 class="mono accent" style="margin:0 0 0.3rem 0;">{report.title}</h3>'
-            f'<small style="color:#8b95a8;">'
-            f'Report ID: <b>{report.report_id}</b> &nbsp;|&nbsp; '
-            f'Generated: {report.generated_at} &nbsp;|&nbsp; '
-            f'Model: {report.model}'
-            f'</small>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f'<div class="card"><div class="report-body">{report.full_text}</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    # Download + send buttons
-    col_dl, col_send = st.columns(2)
-
-    with col_dl:
+    st.markdown(
+        f'<div class="card report-body">{report.full_text}</div>',
+        unsafe_allow_html=True,
+    )
+    cols = st.columns([2, 1])
+    with cols[0]:
         report_md = report.as_markdown()
         st.download_button(
-            label="📥 Download Report (.md)",
+            label="📥 Download report",
             data=report_md,
             file_name=f"{report.report_id}.md",
             mime="text/markdown",
             use_container_width=True,
         )
-
-    with col_send:
-        if st.button(
-            "📧 Send to Municipality",
-            type="primary",
-            use_container_width=True,
-        ):
-            _mock_send_email(report, sev)
-
-
-def _mock_send_email(report: OfficialReport, sev: SeverityReport) -> None:
-    """Simulate sending the report to the municipal authority."""
-    with st.spinner("Connecting to municipal portal…"):
-        time.sleep(1.5)
-
-    # Mock success toast
-    st.success(
-        f"✅ **Report {report.report_id} sent successfully!**  \n"
-        f"Recipient: roads@municipality.gov  \n"
-        f"Priority: {sev.level_str}  \n"
-        f"Expected response: {sev.recommended_response_time}",
-    )
-    st.balloons()
-    st.session_state["email_sent"] = True
-
-    with st.expander("📬 Email preview (mock)", expanded=False):
-        st.code(
-            f"TO:      roads@municipality.gov\n"
-            f"FROM:    smartroad-system@city.ai\n"
-            f"SUBJECT: [SmartRoad] Road Defect Report — {sev.level_str} Severity — {report.report_id}\n\n"
-            + report.as_plain_text(),
-            language=None,
-        )
+    with cols[1]:
+        if st.button("📧 Simulate authority alert", use_container_width=True):
+            sev = st.session_state.severity_report
+            if sev and report:
+                _notify_authorities(report, sev, st.session_state.location_hint, _parse_coordinate(st.session_state.latitude), _parse_coordinate(st.session_state.longitude))
+                st.success("Authority notification simulated and printed to console.")
 
 
 # ---------------------------------------------------------------------------
-# No-results placeholder
+# Map & open alerts
+# ---------------------------------------------------------------------------
+
+def _severity_color(level: str) -> str:
+    return {
+        "Low": "green",
+        "Moderate": "orange",
+        "High": "darkorange",
+        "Critical": "red",
+    }.get(level, "blue")
+
+
+def render_map_section() -> None:
+    st.markdown("---")
+    st.markdown("### 📍 Report Map")
+    open_reports = DB.get_open_reports()
+    markers = [r for r in open_reports if r.latitude is not None and r.longitude is not None]
+
+    if not markers:
+        st.info(
+            "No geocoded open alerts available yet. Add latitude/longitude to a report to see it on the map.",
+            icon="ℹ️",
+        )
+        return
+
+    if FOLIUM_AVAILABLE:
+        center = [markers[0].latitude or 0.0, markers[0].longitude or 0.0]
+        m = folium.Map(location=center, zoom_start=12, tiles="CartoDB positron")
+        for row in markers:
+            popup_html = (
+                f"<strong>{row.issue_type.replace('_', ' ').title()}</strong><br>"
+                f"Severity: {row.severity_level} ({row.severity_score}/100)<br>"
+                f"Location: {row.location_description}<br>"
+                f"Status: {row.status.title()}"
+            )
+            folium.CircleMarker(
+                location=[row.latitude, row.longitude],
+                radius=9,
+                color=_severity_color(row.severity_level),
+                fill=True,
+                fill_color=_severity_color(row.severity_level),
+                fill_opacity=0.8,
+                popup=folium.Popup(popup_html, max_width=280),
+            ).add_to(m)
+        st_folium(m, width=900, height=480)
+    else:
+        st.warning("Install folium and streamlit-folium to view the interactive map.")
+        st.write({"markers": [dict(r.__dict__) for r in markers]})
+
+
+def render_open_alerts() -> None:
+    st.markdown("---")
+    st.markdown("### 🚨 Open Alerts Dashboard")
+    open_reports = DB.get_open_reports()
+    if not open_reports:
+        st.info("No open reports in the system yet.", icon="✅")
+        return
+
+    for report in open_reports:
+        with st.expander(f"{report.issue_type.replace('_', ' ').title()} — {report.severity_level} ({report.report_id})", expanded=False):
+            st.markdown(
+                f"**Location:** {report.location_description}<br>",
+                f"**Severity:** {report.severity_score}/100 ({report.severity_level})<br>",
+                f"**Created:** {report.created_at}<br>",
+                f"**Status:** {report.status.title()}",
+                unsafe_allow_html=True,
+            )
+            with cols[0]:
+                st.write(report.report_text)
+            with cols[1]:
+                if st.button("Mark resolved", key=f"resolve_{report.report_id}"):
+                    DB.resolve_report(report.report_id)
+                    st.success(f"Report {report.report_id} marked resolved.")
+                    st.experimental_rerun()
+
+
+# ---------------------------------------------------------------------------
+# Placeholder
 # ---------------------------------------------------------------------------
 
 def render_placeholder() -> None:
     st.markdown(
         """
-        <div style="text-align:center;padding:3rem 1rem;color:#4b5563;">
-          <div style="font-size:3rem;">🛣️</div>
-          <div style="font-size:1.1rem;margin-top:0.5rem;">
-            Upload a road image to begin defect analysis
-          </div>
-          <div style="font-size:0.8rem;margin-top:0.3rem;">
-            Supported: dashcam photos, aerial images, street-level shots
-          </div>
+        <div style="text-align:center;padding:4rem 1rem;color:#6b7280;">
+          <div style="font-size:4rem;">🚦</div>
+          <div style="font-size:1.1rem;margin-top:1rem;">Upload a road video or photo to generate a municipal report and alert.</div>
+          <div style="font-size:0.9rem;margin-top:0.5rem;">SmartRoad converts visual evidence into an actionable civic issue alert.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -515,10 +547,11 @@ def render_placeholder() -> None:
 
 def main() -> None:
     conf_thresh = render_sidebar()
-    render_header()
+    st.title("SmartRoad — Civic Issue Reporting")
+    st.markdown("Use the form below to upload evidence, add a location, and create a structured municipal alert.")
     render_input_section(conf_thresh)
 
-    if st.session_state.get("detection_result") is None:
+    if st.session_state.detection_result is None:
         render_placeholder()
     else:
         render_results()
