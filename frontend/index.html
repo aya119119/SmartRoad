@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html class="scroll-smooth" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>SmartRoad - AI-Powered Street Defect Detection</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#fff2ef",
+                        "surface": "#fff8f3",
+                        "surface-container-low": "#fff2e1",
+                        "surface-bright": "#fff8f3",
+                        "primary-fixed-dim": "#ffb4a6",
+                        "on-primary": "#ffffff",
+                        "secondary": "#3f683a",
+                        "tertiary": "#4a5489",
+                        "error": "#ba1a1a",
+                        "inverse-primary": "#ffb4a6",
+                        "outline-variant": "#e5beb6",
+                        "surface-container-high": "#fbe5c4",
+                        "inverse-on-surface": "#ffeed7",
+                        "on-tertiary-fixed-variant": "#394377",
+                        "on-secondary-fixed-variant": "#275024",
+                        "on-surface-variant": "#5c403b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#ecd7b7",
+                        "on-primary-fixed": "#3f0300",
+                        "surface-container-highest": "#f5e0bf",
+                        "tertiary-fixed-dim": "#bac3ff",
+                        "primary-fixed": "#ffdad3",
+                        "inverse-surface": "#3b2f18",
+                        "on-secondary-container": "#436c3e",
+                        "surface-tint": "#b91d05",
+                        "outline": "#906f69",
+                        "on-primary-fixed-variant": "#8f1000",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-container": "#f4f3ff",
+                        "secondary-fixed": "#c0efb4",
+                        "on-surface": "#241a06",
+                        "surface-variant": "#f5e0bf",
+                        "tertiary-container": "#626ca3",
+                        "on-tertiary-fixed": "#0b1649",
+                        "on-secondary-fixed": "#002202",
+                        "tertiary-fixed": "#dee1ff",
+                        "on-tertiary": "#ffffff",
+                        "secondary-container": "#bdecb2",
+                        "primary-container": "#d33118",
+                        "secondary-fixed-dim": "#a4d39a",
+                        "surface-container": "#ffebce",
+                        "background": "#fff8f3",
+                        "primary": "#ae1600",
+                        "on-secondary": "#ffffff",
+                        "on-background": "#241a06",
+                        "error-container": "#ffdad6"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Manrope"],
+                        "label": ["Inter"]
+                    }
+                },
+            }
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        .asymmetric-clip {
+            clip-path: polygon(0 0, 100% 0, 100% 90%, 0% 100%);
+        }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+        .loading-spinner {
+            border: 4px solid rgba(174, 22, 0, 0.1);
+            border-top: 4px solid #ae1600;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body antialiased">
+<!-- TopAppBar -->
+<header class="bg-[#fff8f3]/80 dark:bg-stone-900/80 backdrop-blur-xl fixed top-0 w-full z-50 shadow-[0_20px_40px_rgba(36,26,6,0.06)]">
+    <div class="flex items-center justify-between px-6 h-20 w-full">
+        <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-[#ae1600]" data-icon="menu">menu</span>
+            <div class="flex flex-col">
+                <span class="text-xl font-bold tracking-tighter text-[#ae1600]">RoadAI Vision</span>
+                <span class="text-[10px] font-label font-bold uppercase tracking-widest text-secondary">Kingdom of Morocco</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="material-symbols-outlined text-[#ae1600] text-sm" data-icon="language">language</span>
+            <button id="demoBtn" class="bg-gradient-to-br from-[#ae1600] to-[#d33118] text-white px-4 py-2 rounded-lg font-bold text-sm transition-all active:scale-95 hover:shadow-lg">Try Demo</button>
+        </div>
+    </div>
+</header>
+
+<main class="pt-20">
+    <!-- Hero Section -->
+    <section class="relative h-[751px] flex items-end overflow-hidden">
+        <div class="absolute inset-0 z-0">
+            <img alt="Damaged road in Morocco" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDHImLUhC4h0V1J95z4jErma7ghX__y1rrc2v0zl1KPGowkTs4SftPGWoJSpvyqTSvL777-es3vmd9HTP-uHx_BbxAsYEOgAYCz8GTvu361PGwp96Bm8nV24bSXLsP7gmKWg3Kp0X0hlHE5tX9R_sbS_0Ix8QuObIDPkXIaGKtH19MgZzkpownFFQqiAJG4U8hx8nW9ynBW_hLhb9EdngEmlY_Kl7RfNnS-D6hoqd1ZiTD-f29HLJlfyyUGTnKSgtLMmNES4bE5JONZ"/>
+            <div class="absolute inset-0 bg-gradient-to-t from-on-surface via-on-surface/40 to-transparent"></div>
+        </div>
+        <div class="relative z-10 px-6 pb-20 w-full">
+            <div class="max-w-xl">
+                <h1 class="font-headline font-extrabold text-5xl md:text-6xl text-white tracking-tight leading-tight mb-4">
+                    From Road Problems to <span class="text-secondary-container">Official Reports</span> in Seconds
+                </h1>
+                <p class="text-white/80 text-lg mb-8 max-w-md">
+                    AI detects defects, generates professional reports, and notifies authorities in real-time.
+                </p>
+                <div class="flex flex-col gap-3">
+                    <button id="uploadBtn" class="w-full bg-secondary text-white py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-2 shadow-xl shadow-secondary/20 hover:shadow-2xl transition-all active:scale-95">
+                        <span class="material-symbols-outlined" data-icon="upload_file">upload_file</span>
+                        Upload Image
+                    </button>
+                    <button id="sampleBtn" class="w-full bg-surface-container-lowest/10 backdrop-blur-md text-white border border-white/20 py-5 rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-surface-container-lowest/20 transition-all">
+                        <span class="material-symbols-outlined text-primary" data-icon="play_circle">play_circle</span>
+                        Load Sample
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Bar -->
+    <section class="bg-on-secondary-fixed-variant py-8 px-6 overflow-hidden">
+        <div class="flex whitespace-nowrap gap-12 text-secondary-container font-label font-bold text-xs uppercase tracking-[0.2em]">
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span> 350+ Defects Detected</span>
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary"></span> 12 Moroccan Cities</span>
+            <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary"></span> 5+ Municipal Partners</span>
+        </div>
+    </section>
+
+    <!-- Feature Comparison -->
+    <section class="py-20 px-6 bg-surface">
+        <div class="mb-12">
+            <h2 class="font-headline font-bold text-3xl text-on-surface mb-2">Automated Precision</h2>
+            <div class="w-16 h-1 bg-primary rounded-full"></div>
+        </div>
+        <div class="space-y-12">
+            <div class="relative group">
+                <div class="absolute -top-4 -left-4 bg-primary text-white px-4 py-1 rounded-full font-label text-[10px] font-bold z-10 uppercase">Raw Input</div>
+                <div class="rounded-2xl overflow-hidden shadow-2xl shadow-on-surface/5">
+                    <img alt="Cracked road" class="w-full aspect-[4/3] object-cover grayscale opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-x1Zz-X-F9tBybi6BfBbz6Miohpq3vIVJcf5LhU2cC-cob-iLFJCObOWqzrxFIPNIsLIUXBQYcxNbWSyHoKz44bxIK-QnjXF2jysoFspxZZPYgckOuGiX_-5fqsnz97MBTlWrbfP4PpfU75ZzUe1z9i2eKXSQNdO898uqjRfIu537YiD7Hwmeqxr19mMJTAkKMfntk4jAhNjLJfPU7r9mrhJ9c3u3Ef8GscL9bpWZ7xYULE8ooPlSmQvVcQodtgzPZexkk07mHAhp"/>
+                </div>
+            </div>
+            <div class="relative">
+                <div class="absolute -top-4 -right-4 bg-secondary text-white px-4 py-1 rounded-full font-label text-[10px] font-bold z-10 uppercase">AI Detection</div>
+                <div class="rounded-2xl overflow-hidden shadow-2xl shadow-secondary/10 relative">
+                    <img alt="AI Analyzed Road" class="w-full aspect-[4/3] object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAn5ShcjPwx05PhAUcA74sBJJqmXBT-GHm5KcDMWtvNfY8GOWVtEjE3MEoVeXaaUbHVF72lus8JZt8JL3UyXQ3NztVObp8Fgar5IPB42Q7X6_S0Qb7BDL-ALIidNB-r9nTQ_X6qMlJkGlx7qWb0d3D8eRl3vLXkLQ0iFp9D5QNxEIenvj6cjHvU0r-l1QWDJgaEj76htdAVuXKkfGWFsjair5zdQvX6gNKSCHcUPLaTD_xemxBqIhfjtTewb1rpKB0Cbb3dHUOsmw7W"/>
+                    <div class="absolute inset-0 border-[3px] border-secondary/40 rounded-2xl pointer-events-none"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-20 px-6 bg-surface-container-low">
+        <h2 class="font-headline font-bold text-3xl text-on-surface mb-10 text-center">Intelligent Workflow</h2>
+        <div class="grid gap-4">
+            <div class="bg-surface-container-lowest p-8 rounded-3xl shadow-sm border border-outline-variant/10">
+                <div class="w-12 h-12 rounded-2xl bg-secondary-container/30 flex items-center justify-center mb-6">
+                    <span class="material-symbols-outlined text-secondary text-3xl" data-icon="videocam">videocam</span>
+                </div>
+                <h3 class="font-headline font-bold text-xl mb-3">Real-Time Detection</h3>
+                <p class="text-on-surface-variant text-sm leading-relaxed">
+                    Computer vision models trained specifically on Moroccan infrastructure environments detect defects instantly from any camera feed.
+                </p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-secondary text-white p-6 rounded-3xl flex flex-col justify-between">
+                    <span class="material-symbols-outlined text-4xl mb-4" data-icon="analytics">analytics</span>
+                    <div>
+                        <h3 class="font-headline font-bold text-lg leading-tight mb-2">Severity Scoring</h3>
+                        <p class="text-white/70 text-[11px] font-label uppercase tracking-wider">AI Priority Logic</p>
+                    </div>
+                </div>
+                <div class="bg-primary text-white p-6 rounded-3xl flex flex-col justify-between">
+                    <span class="material-symbols-outlined text-4xl mb-4" data-icon="description">description</span>
+                    <div>
+                        <h3 class="font-headline font-bold text-lg leading-tight mb-2">Official Reports</h3>
+                        <p class="text-white/70 text-[11px] font-label uppercase tracking-wider">Government Ready</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results Section (Hidden by default) -->
+    <section id="resultsSection" class="hidden py-20 px-6 bg-on-surface overflow-hidden relative">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
+        <div class="mb-10 text-center">
+            <span class="font-label font-bold text-primary text-[10px] uppercase tracking-widest bg-primary/10 px-3 py-1 rounded-full">Vision Engine v2.0</span>
+            <h2 class="font-headline font-bold text-3xl text-white mt-4">Detection Results</h2>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Annotated Image -->
+            <div class="bg-stone-900 rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
+                <div class="p-4">
+                    <img id="annotatedImage" alt="Annotated detection result" class="w-full rounded-lg" />
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="space-y-4">
+                <!-- Detection Stats -->
+                <div class="bg-stone-900 rounded-2xl border border-white/5 p-6">
+                    <h3 class="font-headline font-bold text-white mb-4">Detection Summary</h3>
+                    <div class="space-y-3 text-white/80">
+                        <div class="flex justify-between">
+                            <span>Defects Found:</span>
+                            <span id="defectCount" class="font-bold text-white">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Confidence:</span>
+                            <span id="confidence" class="font-bold text-white">0%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Inference Time:</span>
+                            <span id="inferenceTime" class="font-bold text-white">0ms</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Severity Assessment -->
+                <div id="severityCard" class="bg-stone-900 rounded-2xl border border-white/5 p-6">
+                    <h3 class="font-headline font-bold text-white mb-4">Severity Assessment</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white/80">Level:</span>
+                            <span id="severityLevel" class="font-bold text-secondary">-</span>
+                        </div>
+                        <div class="w-full bg-stone-800 rounded-full h-3 overflow-hidden">
+                            <div id="severityBar" class="h-full bg-secondary rounded-full" style="width: 0%"></div>
+                        </div>
+                        <div class="text-center">
+                            <span id="severityScore" class="font-bold text-white">0</span>
+                            <span class="text-white/60">/100</span>
+                        </div>
+                        <p id="responseTime" class="text-[12px] text-white/70 italic mt-2"></p>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button id="submitReportBtn" class="w-full bg-gradient-to-r from-primary to-secondary text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-95">
+                    <span class="material-symbols-outlined" data-icon="send">send</span>
+                    Submit to Municipality
+                </button>
+            </div>
+        </div>
+
+        <!-- Report Section -->
+        <div class="mt-8 bg-stone-900 rounded-2xl border border-white/5 p-8">
+            <h3 class="font-headline font-bold text-white text-xl mb-4">Official Report</h3>
+            <div id="reportContent" class="text-white/80 leading-relaxed space-y-4 text-sm">
+                <!-- Report will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Back Button -->
+        <button id="backBtn" class="mt-8 w-full bg-stone-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-700 transition-all">
+            <span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+            Upload Another Image
+        </button>
+    </section>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+        <div class="bg-white rounded-2xl p-8 text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-on-surface font-bold">Analyzing image...</p>
+            <p class="text-on-surface/60 text-sm">This may take a moment</p>
+        </div>
+    </div>
+
+    <!-- Upload Modal (Hidden) -->
+    <div id="uploadModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-md w-full">
+            <h2 class="font-headline font-bold text-2xl text-on-surface mb-4">Upload Road Image</h2>
+            <p class="text-on-surface/70 mb-6">Select an image to analyze for road defects</p>
+            
+            <div class="space-y-4">
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+                <label for="fileInput" class="block">
+                    <div class="border-2 border-dashed border-primary rounded-xl p-8 text-center cursor-pointer hover:bg-primary/5 transition">
+                        <span class="material-symbols-outlined text-primary text-4xl block mb-2">cloud_upload</span>
+                        <p class="text-on-surface font-bold">Click to upload or drag and drop</p>
+                        <p class="text-on-surface/60 text-sm">PNG, JPG, or WebP (max 10MB)</p>
+                    </div>
+                </label>
+                
+                <input type="text" id="locationInput" placeholder="Location (optional)" class="w-full px-4 py-2 border border-outline rounded-lg text-on-surface placeholder-on-surface/50" />
+                
+                <button id="analyzeBtn" disabled class="w-full bg-gradient-to-r from-primary to-secondary text-white py-3 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all active:scale-95">
+                    Analyze Image
+                </button>
+                <button id="closeModalBtn" class="w-full bg-surface-container text-on-surface py-3 rounded-xl font-bold hover:bg-surface-variant transition-all">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-surface-container-high pt-20 pb-24 px-6 relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-white to-secondary"></div>
+        <div class="flex flex-col items-center text-center mb-12">
+            <h2 class="font-headline font-extrabold text-2xl tracking-tighter text-on-surface mb-2">SmartRoad</h2>
+            <p class="font-label font-bold text-secondary text-xs uppercase tracking-widest mb-8">Built for a Better Morocco</p>
+            <div class="flex gap-6 mb-12">
+                <span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer" data-icon="public">public</span>
+                <span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer" data-icon="mail">mail</span>
+                <span class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors cursor-pointer" data-icon="smart_display">smart_display</span>
+            </div>
+            <p class="text-on-surface-variant text-[10px] max-w-xs mx-auto opacity-60">
+                © 2024 RoadAI Vision Morocco. Developing intelligent solutions for sustainable infrastructure development in the Kingdom.
+            </p>
+        </div>
+    </footer>
+</main>
+
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full h-16 bg-[#fff8f3]/90 dark:bg-stone-900/90 backdrop-blur-lg flex justify-around items-center px-4 pb-safe z-50 rounded-t-xl border-t border-[#e5beb6]/15 shadow-[0_-10px_30px_rgba(36,26,6,0.04)]">
+    <a class="flex flex-col items-center justify-center text-[#3f683a] scale-110" href="#">
+        <span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+        <span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-widest">Home</span>
+    </a>
+    <a class="flex flex-col items-center justify-center text-[#241a06]/50" href="#">
+        <span class="material-symbols-outlined" data-icon="list_alt">list_alt</span>
+        <span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-widest">Reports</span>
+    </a>
+    <div class="relative -top-6">
+        <div id="centerBtn" class="bg-gradient-to-br from-[#ae1600] to-[#d33118] w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/40 border-4 border-surface cursor-pointer hover:shadow-xl transition-all active:scale-95">
+            <span class="material-symbols-outlined text-white text-3xl" data-icon="center_focus_strong">center_focus_strong</span>
+        </div>
+        <span class="absolute -bottom-6 left-1/2 -translate-x-1/2 font-['Inter'] text-[10px] font-semibold uppercase tracking-widest text-[#241a06]/50">AI Scan</span>
+    </div>
+    <a class="flex flex-col items-center justify-center text-[#241a06]/50" href="#">
+        <span class="material-symbols-outlined" data-icon="person">person</span>
+        <span class="font-['Inter'] text-[10px] font-semibold uppercase tracking-widest">Profile</span>
+    </a>
+</nav>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>
