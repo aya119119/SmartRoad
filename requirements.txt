@@ -7,15 +7,17 @@ opencv-python-headless>=4.9.0
 Pillow>=10.0.0
 numpy>=1.26.0
 
-# ── Streamlit frontend ───────────────────────────────────────────────────────
-streamlit>=1.35.0
+# ── Web framework ────────────────────────────────────────────────────────────
+fastapi>=0.104.0            # async web framework
+uvicorn[standard]>=0.24.0   # ASGI server
+python-multipart>=0.0.6     # file upload handling
+aiofiles>=23.2.0            # async file operations
 
 # ── LLM providers (install whichever you use) ────────────────────────────────
 groq>=0.9.0                 # Groq API client  (set GROQ_API_KEY)
 openai>=1.30.0              # OpenAI API client (set OPENAI_API_KEY)
 
 # ── Utilities ────────────────────────────────────────────────────────────────
-requests>=2.31.0            # for download_samples.py
-python-dotenv>=1.0.0        # optional: load .env file
-folium>=0.15.1
-streamlit-folium>=0.11.0
+requests>=2.31.0            # HTTP client (optional but good to have)
+python-dotenv>=1.0.0        # load .env file for config
+pydantic>=2.0.0             # data validation
